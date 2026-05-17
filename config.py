@@ -21,7 +21,6 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-
 AGENTIC_DIR = ".agentic"
 MODELS_FILE = "models.yaml"
 CONFIG_FILE = "config.yaml"
@@ -31,6 +30,7 @@ AGENT_CONTEXT_FILE = "AGENT_CONTEXT.md"
 @dataclass
 class ModelConfig:
     """LLM configuration for a single agent."""
+
     provider: str = "openai"
     model: str = "gpt-4o"
     temperature: float = 0.2
@@ -40,6 +40,7 @@ class ModelConfig:
 @dataclass
 class PluginConfig:
     """All configuration for a plugin run, resolved from the target repo."""
+
     # API Keys (from config.yaml or environment variables)
     openai_api_key: str = ""
     anthropic_api_key: str = ""
@@ -87,7 +88,9 @@ def resolve_config(repo_path: str) -> PluginConfig:
         ralph = raw.get("ralph_loop", {})
 
         config.openai_api_key = api_keys.get("openai", os.getenv("OPENAI_API_KEY", ""))
-        config.anthropic_api_key = api_keys.get("anthropic", os.getenv("ANTHROPIC_API_KEY", ""))
+        config.anthropic_api_key = api_keys.get(
+            "anthropic", os.getenv("ANTHROPIC_API_KEY", "")
+        )
         config.google_api_key = api_keys.get("google", os.getenv("GOOGLE_API_KEY", ""))
         config.github_token = github.get("token", os.getenv("GITHUB_TOKEN", ""))
         config.github_repo = github.get("repo", os.getenv("GITHUB_REPO", ""))
@@ -117,7 +120,13 @@ def resolve_config(repo_path: str) -> PluginConfig:
     else:
         # Defaults: GPT-4o for all agents
         default = ModelConfig()
-        for role in ["project_manager", "tech_lead", "developer", "tester", "release_engineer"]:
+        for role in [
+            "project_manager",
+            "tech_lead",
+            "developer",
+            "tester",
+            "release_engineer",
+        ]:
             config.models[role] = default
 
     # --- Load AGENT_CONTEXT.md ---
@@ -130,7 +139,9 @@ def resolve_config(repo_path: str) -> PluginConfig:
         if root_context.exists():
             config.agent_context = root_context.read_text(encoding="utf-8")
         else:
-            config.agent_context = "No AGENT_CONTEXT.md found. Infer conventions from the codebase."
+            config.agent_context = (
+                "No AGENT_CONTEXT.md found. Infer conventions from the codebase."
+            )
 
     return config
 
@@ -139,13 +150,21 @@ def validate_config(config: PluginConfig) -> list[str]:
     """Validate that the resolved config has all required fields."""
     errors = []
     if not config.github_token:
-        errors.append("GitHub token not set. Add to .agentic/config.yaml or set GITHUB_TOKEN env var.")
+        errors.append(
+            "GitHub token not set. Add to .agentic/config.yaml or set GITHUB_TOKEN env var."
+        )
     if not config.github_repo:
-        errors.append("GitHub repo not set. Add to .agentic/config.yaml or set GITHUB_REPO env var.")
+        errors.append(
+            "GitHub repo not set. Add to .agentic/config.yaml or set GITHUB_REPO env var."
+        )
 
     # Check that at least one LLM provider key is set
-    has_any_key = any([config.openai_api_key, config.anthropic_api_key, config.google_api_key])
+    has_any_key = any(
+        [config.openai_api_key, config.anthropic_api_key, config.google_api_key]
+    )
     if not has_any_key:
-        errors.append("No LLM API key found. Set at least one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY.")
+        errors.append(
+            "No LLM API key found. Set at least one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY."
+        )
 
     return errors

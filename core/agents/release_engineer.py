@@ -4,7 +4,7 @@ Handles git operations and creates the final Pull Request.
 """
 
 from core.base_agent import AgentDefinition
-from tools import GIT_TOOLS, GIT_TOOL_MAP
+from tools import GIT_TOOL_MAP, GIT_TOOLS
 
 RELEASE_ENGINEER = AgentDefinition(
     name="Release Engineer",

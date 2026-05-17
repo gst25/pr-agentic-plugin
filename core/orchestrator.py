@@ -17,13 +17,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from config import PluginConfig
-from core.agents import (
-    PROJECT_MANAGER,
-    TECH_LEAD,
-    DEVELOPER,
-    TESTER,
-    RELEASE_ENGINEER,
-)
+from core.agents import (DEVELOPER, PROJECT_MANAGER, RELEASE_ENGINEER,
+                         TECH_LEAD, TESTER)
 from core.llm_client import get_llm_client
 from core.ralph_loop import RalphLoop
 
@@ -56,11 +51,14 @@ class Orchestrator:
         if path.suffix == ".pdf":
             try:
                 import pdfplumber
+
                 with pdfplumber.open(path) as pdf:
                     text = "\n\n".join(page.extract_text() or "" for page in pdf.pages)
                 return text
             except ImportError:
-                raise ImportError("pdfplumber is required for PDF files. Run: pip install pdfplumber")
+                raise ImportError(
+                    "pdfplumber is required for PDF files. Run: pip install pdfplumber"
+                )
         else:
             return path.read_text(encoding="utf-8")
 
@@ -68,7 +66,12 @@ class Orchestrator:
 
     def run_project_manager(self) -> list[dict]:
         """Run the PM agent to break the PRD into tickets."""
-        console.print(Panel("[bold]📋 Phase 1: Project Manager — Breaking PRD into tickets[/bold]", style="magenta"))
+        console.print(
+            Panel(
+                "[bold]📋 Phase 1: Project Manager — Breaking PRD into tickets[/bold]",
+                style="magenta",
+            )
+        )
 
         pm_model = self.config.models.get("project_manager")
         provider = pm_model.provider if pm_model else "openai"
@@ -95,6 +98,7 @@ class Orchestrator:
         try:
             if provider == "google":
                 import google.generativeai as genai
+
                 genai.configure(api_key=self.config.google_api_key)
                 gmodel = genai.GenerativeModel(model)
                 response = gmodel.generate_content(
@@ -154,13 +158,19 @@ class Orchestrator:
                 self.tickets = [parsed]
         except json.JSONDecodeError:
             # Try to repair truncated JSON (common with API token limits)
-            console.print("[yellow]⚠️ JSON was truncated. Attempting repair...[/yellow]")
+            console.print(
+                "[yellow]⚠️ JSON was truncated. Attempting repair...[/yellow]"
+            )
             repaired = self._repair_truncated_json(raw_output)
             if repaired:
                 self.tickets = repaired
-                console.print(f"[green]✅ Repaired! Recovered {len(repaired)} ticket(s).[/green]")
+                console.print(
+                    f"[green]✅ Repaired! Recovered {len(repaired)} ticket(s).[/green]"
+                )
             else:
-                console.print(f"[red]ERROR: PM returned invalid JSON. Could not repair.[/red]")
+                console.print(
+                    f"[red]ERROR: PM returned invalid JSON. Could not repair.[/red]"
+                )
                 console.print(raw_output[:500])
                 return []
 
@@ -184,15 +194,15 @@ class Orchestrator:
         depth = 0
         start = None
         for i, ch in enumerate(raw):
-            if ch == '{':
+            if ch == "{":
                 if depth == 0:
                     start = i
                 depth += 1
-            elif ch == '}':
+            elif ch == "}":
                 depth -= 1
                 if depth == 0 and start is not None:
                     try:
-                        obj = json.loads(raw[start:i + 1])
+                        obj = json.loads(raw[start : i + 1])
                         if "title" in obj:
                             tickets.append(obj)
                     except json.JSONDecodeError:
@@ -236,7 +246,9 @@ class Orchestrator:
                 body = (
                     f"{ticket.get('description', '')}\n\n"
                     f"### Acceptance Criteria\n"
-                    + "\n".join(f"- [ ] {ac}" for ac in ticket.get("acceptance_criteria", []))
+                    + "\n".join(
+                        f"- [ ] {ac}" for ac in ticket.get("acceptance_criteria", [])
+                    )
                 )
                 issue = repo.create_issue(
                     title=ticket["title"],
@@ -247,7 +259,9 @@ class Orchestrator:
                 ticket["github_issue_url"] = issue.html_url
                 console.print(f"  ✅ Created Issue #{issue.number}: {ticket['title']}")
             except GithubException as e:
-                console.print(f"  ❌ Failed to create issue: {e.data.get('message', str(e))}")
+                console.print(
+                    f"  ❌ Failed to create issue: {e.data.get('message', str(e))}"
+                )
 
         return self.tickets
 
@@ -255,10 +269,12 @@ class Orchestrator:
 
     def run_tech_lead(self, ticket: dict) -> dict:
         """Run the Tech Lead agent to enrich a ticket."""
-        console.print(Panel(
-            f"[bold]👨‍💼 Phase 2: Tech Lead — Analyzing: {ticket['title']}[/bold]",
-            style="magenta",
-        ))
+        console.print(
+            Panel(
+                f"[bold]👨‍💼 Phase 2: Tech Lead — Analyzing: {ticket['title']}[/bold]",
+                style="magenta",
+            )
+        )
 
         task_prompt = (
             f"## Ticket\n"
@@ -270,8 +286,10 @@ class Orchestrator:
         )
 
         loop = RalphLoop(
-            agent=TECH_LEAD, repo_path=self.repo_path,
-            config=self.config, context=self.agent_context,
+            agent=TECH_LEAD,
+            repo_path=self.repo_path,
+            config=self.config,
+            context=self.agent_context,
         )
         result = loop.run(task_prompt)
 
@@ -291,23 +309,30 @@ class Orchestrator:
 
     def run_developer(self, ticket: dict) -> str:
         """Run the Developer agent in a Ralph Loop."""
-        console.print(Panel(
-            f"[bold]💻 Phase 3: Developer — Coding: {ticket['title']}[/bold]",
-            style="green",
-        ))
+        console.print(
+            Panel(
+                f"[bold]💻 Phase 3: Developer — Coding: {ticket['title']}[/bold]",
+                style="green",
+            )
+        )
 
         task_prompt = (
             f"## Ticket\n"
             f"Title: {ticket['title']}\n"
             f"Description: {ticket.get('description', '')}\n\n"
             f"## Implementation Plan (from Tech Lead)\n"
-            + "\n".join(f"- {step}" for step in ticket.get("implementation_plan", ["No plan provided."]))
+            + "\n".join(
+                f"- {step}"
+                for step in ticket.get("implementation_plan", ["No plan provided."])
+            )
             + f"\n\n## Build Command\n{ticket.get('build_command', 'Detect from project files.')}"
         )
 
         loop = RalphLoop(
-            agent=DEVELOPER, repo_path=self.repo_path,
-            config=self.config, context=self.agent_context,
+            agent=DEVELOPER,
+            repo_path=self.repo_path,
+            config=self.config,
+            context=self.agent_context,
         )
         return loop.run(task_prompt)
 
@@ -315,10 +340,12 @@ class Orchestrator:
 
     def run_tester(self, ticket: dict) -> str:
         """Run the Tester agent to write and run tests."""
-        console.print(Panel(
-            f"[bold]🧪 Phase 4: Tester — Validating: {ticket['title']}[/bold]",
-            style="blue",
-        ))
+        console.print(
+            Panel(
+                f"[bold]🧪 Phase 4: Tester — Validating: {ticket['title']}[/bold]",
+                style="blue",
+            )
+        )
 
         task_prompt = (
             f"## Ticket\n"
@@ -327,12 +354,18 @@ class Orchestrator:
             + "\n".join(f"- {ac}" for ac in ticket.get("acceptance_criteria", []))
             + f"\n\n## Test Command\n{ticket.get('test_command', 'Detect from project files.')}"
             + f"\n\nFiles that were created/modified:\n"
-            + "\n".join(f"- {f}" for f in ticket.get("files_to_create", []) + ticket.get("files_to_modify", []))
+            + "\n".join(
+                f"- {f}"
+                for f in ticket.get("files_to_create", [])
+                + ticket.get("files_to_modify", [])
+            )
         )
 
         loop = RalphLoop(
-            agent=TESTER, repo_path=self.repo_path,
-            config=self.config, context=self.agent_context,
+            agent=TESTER,
+            repo_path=self.repo_path,
+            config=self.config,
+            context=self.agent_context,
         )
         return loop.run(task_prompt)
 
@@ -340,7 +373,9 @@ class Orchestrator:
 
     def run_release_engineer(self, branch_name: str) -> str:
         """Run the Release Engineer to commit, push, and create a PR."""
-        console.print(Panel("[bold]🚀 Phase 5: Release Engineer — Shipping[/bold]", style="red"))
+        console.print(
+            Panel("[bold]🚀 Phase 5: Release Engineer — Shipping[/bold]", style="red")
+        )
 
         tickets_summary = "\n".join(
             f"- Closes #{t.get('github_issue_number', '?')}: {t['title']}"
@@ -354,8 +389,10 @@ class Orchestrator:
         )
 
         loop = RalphLoop(
-            agent=RELEASE_ENGINEER, repo_path=self.repo_path,
-            config=self.config, context=self.agent_context,
+            agent=RELEASE_ENGINEER,
+            repo_path=self.repo_path,
+            config=self.config,
+            context=self.agent_context,
         )
         return loop.run(task_prompt)
 
@@ -363,12 +400,14 @@ class Orchestrator:
 
     def run_full_pipeline(self):
         """Execute the entire pipeline from PRD to PR."""
-        console.print(Panel(
-            "[bold]🏁 STARTING FULL PIPELINE[/bold]\n"
-            f"PRD: {self.prd_path}\n"
-            f"Repo: {self.repo_path}",
-            style="bold white on blue",
-        ))
+        console.print(
+            Panel(
+                "[bold]🏁 STARTING FULL PIPELINE[/bold]\n"
+                f"PRD: {self.prd_path}\n"
+                f"Repo: {self.repo_path}",
+                style="bold white on blue",
+            )
+        )
 
         # Phase 1: Project Manager creates tickets
         tickets = self.run_project_manager()
@@ -380,12 +419,17 @@ class Orchestrator:
         self.create_github_issues()
 
         # Branch name
-        branch_name = "feat/agentic-" + tickets[0]["title"].split("]")[-1].strip().lower().replace(" ", "-")[:30]
+        branch_name = (
+            "feat/agentic-"
+            + tickets[0]["title"].split("]")[-1].strip().lower().replace(" ", "-")[:30]
+        )
 
         # Process each ticket
         for i, ticket in enumerate(tickets, 1):
             console.print(f"\n{'='*60}")
-            console.print(f"[bold]Processing Ticket {i}/{len(tickets)}: {ticket['title']}[/bold]")
+            console.print(
+                f"[bold]Processing Ticket {i}/{len(tickets)}: {ticket['title']}[/bold]"
+            )
             console.print(f"{'='*60}")
 
             # Phase 2: Tech Lead enriches the ticket
@@ -397,19 +441,27 @@ class Orchestrator:
 
                 dev_result = self.run_developer(ticket)
                 if "BUILD_FAILED" in dev_result:
-                    console.print(f"[red]Developer could not complete the build. Skipping ticket.[/red]")
+                    console.print(
+                        f"[red]Developer could not complete the build. Skipping ticket.[/red]"
+                    )
                     break
 
                 test_result = self.run_tester(ticket)
                 if "TESTS_PASSED" in test_result:
-                    console.print(f"[green]✅ Ticket complete: {ticket['title']}[/green]")
+                    console.print(
+                        f"[green]✅ Ticket complete: {ticket['title']}[/green]"
+                    )
                     self.completed_tickets.append(ticket)
                     break
                 elif "CODE_BUG" in test_result:
-                    console.print(f"[yellow]🐛 Bug found. Sending back to Developer...[/yellow]")
+                    console.print(
+                        f"[yellow]🐛 Bug found. Sending back to Developer...[/yellow]"
+                    )
                     ticket["bug_report"] = test_result
                 else:
-                    console.print(f"[yellow]Unexpected tester output. Moving on.[/yellow]")
+                    console.print(
+                        f"[yellow]Unexpected tester output. Moving on.[/yellow]"
+                    )
                     self.completed_tickets.append(ticket)
                     break
 
@@ -419,7 +471,9 @@ class Orchestrator:
         else:
             console.print("[red]No tickets were completed. No PR to create.[/red]")
 
-        console.print(Panel("[bold green]🏁 PIPELINE COMPLETE[/bold green]", style="green"))
+        console.print(
+            Panel("[bold green]🏁 PIPELINE COMPLETE[/bold green]", style="green")
+        )
 
     # ── Direct Pipeline (Doc → Code → PR) ─────
 
@@ -431,13 +485,15 @@ class Orchestrator:
         (not a high-level PRD that needs to be broken into tickets).
         The entire doc is treated as a single implementation task.
         """
-        console.print(Panel(
-            "[bold]🏁 STARTING DIRECT PIPELINE[/bold]\n"
-            f"Doc: {self.prd_path}\n"
-            f"Repo: {self.repo_path}\n\n"
-            "[dim]Mode: Direct (Doc → Code → Tests → PR) — skipping ticket creation[/dim]",
-            style="bold white on magenta",
-        ))
+        console.print(
+            Panel(
+                "[bold]🏁 STARTING DIRECT PIPELINE[/bold]\n"
+                f"Doc: {self.prd_path}\n"
+                f"Repo: {self.repo_path}\n\n"
+                "[dim]Mode: Direct (Doc → Code → Tests → PR) — skipping ticket creation[/dim]",
+                style="bold white on magenta",
+            )
+        )
 
         # Create a synthetic "ticket" from the entire dev doc
         doc_title = Path(self.prd_path).stem.replace("-", " ").replace("_", " ").title()
@@ -456,10 +512,12 @@ class Orchestrator:
         console.print(f"{'='*60}")
 
         # Phase 1 (Tech Lead): Analyze the dev doc and create an implementation plan
-        console.print(Panel(
-            f"[bold]👨‍💼 Tech Lead — Analyzing dev doc and creating implementation plan[/bold]",
-            style="magenta",
-        ))
+        console.print(
+            Panel(
+                f"[bold]👨‍💼 Tech Lead — Analyzing dev doc and creating implementation plan[/bold]",
+                style="magenta",
+            )
+        )
 
         task_prompt = (
             f"## Development Document\n"
@@ -471,8 +529,10 @@ class Orchestrator:
         )
 
         loop = RalphLoop(
-            agent=TECH_LEAD, repo_path=self.repo_path,
-            config=self.config, context=self.agent_context,
+            agent=TECH_LEAD,
+            repo_path=self.repo_path,
+            config=self.config,
+            context=self.agent_context,
         )
         result = loop.run(task_prompt)
 
@@ -492,16 +552,22 @@ class Orchestrator:
 
             dev_result = self.run_developer(ticket)
             if "BUILD_FAILED" in dev_result:
-                console.print(f"[red]Developer could not complete the build. Aborting.[/red]")
+                console.print(
+                    f"[red]Developer could not complete the build. Aborting.[/red]"
+                )
                 return
 
             test_result = self.run_tester(ticket)
             if "TESTS_PASSED" in test_result:
-                console.print(f"[green]✅ Implementation complete and tests passing![/green]")
+                console.print(
+                    f"[green]✅ Implementation complete and tests passing![/green]"
+                )
                 self.completed_tickets.append(ticket)
                 break
             elif "CODE_BUG" in test_result:
-                console.print(f"[yellow]🐛 Bug found. Sending back to Developer...[/yellow]")
+                console.print(
+                    f"[yellow]🐛 Bug found. Sending back to Developer...[/yellow]"
+                )
                 ticket["bug_report"] = test_result
             else:
                 console.print(f"[yellow]Unexpected tester output. Moving on.[/yellow]")
@@ -514,4 +580,6 @@ class Orchestrator:
         else:
             console.print("[red]Implementation failed. No PR to create.[/red]")
 
-        console.print(Panel("[bold green]🏁 DIRECT PIPELINE COMPLETE[/bold green]", style="green"))
+        console.print(
+            Panel("[bold green]🏁 DIRECT PIPELINE COMPLETE[/bold green]", style="green")
+        )

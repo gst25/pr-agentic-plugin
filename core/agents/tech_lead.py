@@ -4,7 +4,7 @@ Scans the repo and enriches tickets with implementation guidance.
 """
 
 from core.base_agent import AgentDefinition
-from tools import FILE_TOOLS, FILE_TOOL_MAP
+from tools import FILE_TOOL_MAP, FILE_TOOLS
 
 TECH_LEAD = AgentDefinition(
     name="Tech Lead",

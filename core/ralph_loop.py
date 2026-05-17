@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from core.base_agent import AgentDefinition
-from core.llm_client import get_llm_client, ModelConfig
+from core.llm_client import ModelConfig, get_llm_client
 
 console = Console()
 
@@ -25,7 +25,9 @@ class RalphLoop:
     Config is INJECTED (not read from a global), making the engine fully agnostic.
     """
 
-    def __init__(self, agent: AgentDefinition, repo_path: str, config, context: str = ""):
+    def __init__(
+        self, agent: AgentDefinition, repo_path: str, config, context: str = ""
+    ):
         """
         Args:
             agent: The agent definition (persona + tools).
@@ -40,7 +42,9 @@ class RalphLoop:
         # Get THIS agent's model config from the injected config
         self.model_config: ModelConfig = config.models.get(
             agent.role,
-            ModelConfig(provider="openai", model="gpt-4o", temperature=0.2, max_tokens=4096),
+            ModelConfig(
+                provider="openai", model="gpt-4o", temperature=0.2, max_tokens=4096
+            ),
         )
 
         # Set the API key for the provider in the environment
@@ -57,32 +61,42 @@ class RalphLoop:
 
     def run(self, task_prompt: str) -> str:
         """Run the agent in a Ralph Loop until it signals completion."""
-        console.print(Panel(
-            f"[bold]🚀 Starting {self.agent.name}[/bold]\n"
-            f"Model: [cyan]{self.model_config.provider}/{self.model_config.model}[/cyan]\n"
-            f"Max iterations: {self.max_iterations}",
-            style="cyan",
-        ))
+        console.print(
+            Panel(
+                f"[bold]🚀 Starting {self.agent.name}[/bold]\n"
+                f"Model: [cyan]{self.model_config.provider}/{self.model_config.model}[/cyan]\n"
+                f"Max iterations: {self.max_iterations}",
+                style="cyan",
+            )
+        )
 
         for iteration in range(1, self.max_iterations + 1):
-            console.print(f"\n[bold yellow]── Iteration {iteration}/{self.max_iterations} ──[/bold yellow]")
+            console.print(
+                f"\n[bold yellow]── Iteration {iteration}/{self.max_iterations} ──[/bold yellow]"
+            )
 
             result = self._execute_single_iteration(task_prompt, iteration)
 
             if self._is_complete(result):
-                console.print(Panel(
-                    f"[bold green]✅ {self.agent.name} completed in {iteration} iteration(s).[/bold green]",
-                    style="green",
-                ))
+                console.print(
+                    Panel(
+                        f"[bold green]✅ {self.agent.name} completed in {iteration} iteration(s).[/bold green]",
+                        style="green",
+                    )
+                )
                 return result
 
-            console.print(f"[dim]Agent has not signaled completion. Continuing loop...[/dim]")
+            console.print(
+                f"[dim]Agent has not signaled completion. Continuing loop...[/dim]"
+            )
 
-        console.print(Panel(
-            f"[bold red]⚠️ {self.agent.name} hit max iterations ({self.max_iterations}). "
-            f"Stopping and escalating to human.[/bold red]",
-            style="red",
-        ))
+        console.print(
+            Panel(
+                f"[bold red]⚠️ {self.agent.name} hit max iterations ({self.max_iterations}). "
+                f"Stopping and escalating to human.[/bold red]",
+                style="red",
+            )
+        )
         return f"MAX_ITERATIONS_REACHED: {self.agent.name} could not complete the task."
 
     def _execute_single_iteration(self, task_prompt: str, iteration: int) -> str:
@@ -120,17 +134,21 @@ class RalphLoop:
 
                     tool_result = self._execute_tool(func_name, func_args)
 
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": str(tool_result),
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": str(tool_result),
+                        }
+                    )
 
                     display_result = str(tool_result)[:200]
                     console.print(f"    → {display_result}")
             else:
                 final_text = choice.message.content or ""
-                console.print(f"\n  💬 [bold]{self.agent.name}:[/bold] {final_text[:300]}")
+                console.print(
+                    f"\n  💬 [bold]{self.agent.name}:[/bold] {final_text[:300]}"
+                )
                 return final_text
 
         return "MAX_TOOL_ROUNDS_REACHED"
@@ -159,27 +177,37 @@ class RalphLoop:
 
     def _call_google(self, messages: list[dict]):
         """Adapter for Google Gemini API."""
-        import google.generativeai as genai
         from types import SimpleNamespace
+
+        import google.generativeai as genai
 
         genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
 
         # Build Gemini tools from OpenAI tool schemas
         gemini_tools = None
         if self.agent.tools:
+
             def map_schema(schema):
-                if not isinstance(schema, dict): return schema
+                if not isinstance(schema, dict):
+                    return schema
                 mapped = {}
                 for k, v in schema.items():
                     if k == "type" and isinstance(v, str):
                         t = v.upper()
                         # Map JSON schema types to Gemini proto types
-                        if t == "INTEGER": t = "INTEGER"
-                        elif t == "NUMBER": t = "NUMBER"
-                        elif t == "BOOLEAN": t = "BOOLEAN"
-                        elif t == "ARRAY": t = "ARRAY"
-                        elif t == "OBJECT": t = "OBJECT"
-                        mapped[k] = getattr(genai.protos.Type, t, genai.protos.Type.TYPE_UNSPECIFIED)
+                        if t == "INTEGER":
+                            t = "INTEGER"
+                        elif t == "NUMBER":
+                            t = "NUMBER"
+                        elif t == "BOOLEAN":
+                            t = "BOOLEAN"
+                        elif t == "ARRAY":
+                            t = "ARRAY"
+                        elif t == "OBJECT":
+                            t = "OBJECT"
+                        mapped[k] = getattr(
+                            genai.protos.Type, t, genai.protos.Type.TYPE_UNSPECIFIED
+                        )
                     elif k == "properties":
                         mapped[k] = {pk: map_schema(pv) for pk, pv in v.items()}
                     elif k == "items":
@@ -205,54 +233,98 @@ class RalphLoop:
         gemini_contents = []
         for msg in messages:
             # Handle both dicts and SimpleNamespace/Object types
-            role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "")
-            
+            role = (
+                msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "")
+            )
+
             if role == "system":
-                system_instruction = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+                system_instruction = (
+                    msg.get("content")
+                    if isinstance(msg, dict)
+                    else getattr(msg, "content", "")
+                )
             elif role == "user":
-                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+                content = (
+                    msg.get("content")
+                    if isinstance(msg, dict)
+                    else getattr(msg, "content", "")
+                )
                 gemini_contents.append({"role": "user", "parts": [content]})
             elif role == "assistant" or role == "model":
-                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
-                
+                content = (
+                    msg.get("content")
+                    if isinstance(msg, dict)
+                    else getattr(msg, "content", "")
+                )
+
                 parts = []
                 if content:
                     parts.append(content)
-                
+
                 # Handle tool calls in assistant messages
-                tool_calls = msg.get("tool_calls") if isinstance(msg, dict) else getattr(msg, "tool_calls", None)
+                tool_calls = (
+                    msg.get("tool_calls")
+                    if isinstance(msg, dict)
+                    else getattr(msg, "tool_calls", None)
+                )
                 if tool_calls:
                     for tc in tool_calls:
-                        tc_func = tc.get("function") if isinstance(tc, dict) else tc.function
-                        tc_name = tc_func.get("name") if isinstance(tc_func, dict) else tc_func.name
-                        tc_args = tc_func.get("arguments") if isinstance(tc_func, dict) else tc_func.arguments
-                        
+                        tc_func = (
+                            tc.get("function") if isinstance(tc, dict) else tc.function
+                        )
+                        tc_name = (
+                            tc_func.get("name")
+                            if isinstance(tc_func, dict)
+                            else tc_func.name
+                        )
+                        tc_args = (
+                            tc_func.get("arguments")
+                            if isinstance(tc_func, dict)
+                            else tc_func.arguments
+                        )
+
                         parts.append(
                             genai.protos.FunctionCall(
                                 name=tc_name,
-                                args=json.loads(tc_args) if isinstance(tc_args, str) else tc_args
+                                args=(
+                                    json.loads(tc_args)
+                                    if isinstance(tc_args, str)
+                                    else tc_args
+                                ),
                             )
                         )
-                
+
                 if not parts:
                     parts.append("")
                 gemini_contents.append({"role": "model", "parts": parts})
-                
+
             elif role == "tool":
                 # Convert tool results back to Gemini format
-                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
-                tool_call_id = msg.get("tool_call_id") if isinstance(msg, dict) else getattr(msg, "tool_call_id", "")
-                
+                content = (
+                    msg.get("content")
+                    if isinstance(msg, dict)
+                    else getattr(msg, "content", "")
+                )
+                tool_call_id = (
+                    msg.get("tool_call_id")
+                    if isinstance(msg, dict)
+                    else getattr(msg, "tool_call_id", "")
+                )
+
                 # In Gemini, we use FunctionResponse for tool responses
-                gemini_contents.append({
-                    "role": "user",
-                    "parts": [
-                        genai.protos.FunctionResponse(
-                            name=tool_call_id.replace("call_", ""), # Simplified name extraction
-                            response={"result": content}
-                        )
-                    ]
-                })
+                gemini_contents.append(
+                    {
+                        "role": "user",
+                        "parts": [
+                            genai.protos.FunctionResponse(
+                                name=tool_call_id.replace(
+                                    "call_", ""
+                                ),  # Simplified name extraction
+                                response={"result": content},
+                            )
+                        ],
+                    }
+                )
 
         gmodel = genai.GenerativeModel(
             self.model_config.model,
@@ -260,13 +332,31 @@ class RalphLoop:
             tools=gemini_tools,
         )
 
-        response = gmodel.generate_content(
-            gemini_contents,
-            generation_config=genai.GenerationConfig(
-                temperature=self.model_config.temperature,
-                max_output_tokens=self.model_config.max_tokens,
-            ),
-        )
+        import time
+
+        from google.api_core.exceptions import ResourceExhausted
+
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = gmodel.generate_content(
+                    gemini_contents,
+                    generation_config=genai.GenerationConfig(
+                        temperature=self.model_config.temperature,
+                        max_output_tokens=self.model_config.max_tokens,
+                    ),
+                )
+                break
+            except ResourceExhausted as e:
+                if attempt < max_retries - 1:
+                    sleep_time = 15
+                    console.print(
+                        f"[yellow]⚠️ Gemini Rate Limit Hit (429). Sleeping for {sleep_time}s and retrying...[/yellow]"
+                    )
+                    time.sleep(sleep_time)
+                else:
+                    raise e
 
         # Adapt Gemini response to OpenAI-like structure
         text_content = ""
@@ -277,13 +367,15 @@ class RalphLoop:
                 text_content = part.text
             elif part.function_call:
                 fc = part.function_call
-                tool_calls.append(SimpleNamespace(
-                    id=f"call_{fc.name}",
-                    function=SimpleNamespace(
-                        name=fc.name,
-                        arguments=json.dumps(dict(fc.args)),
-                    ),
-                ))
+                tool_calls.append(
+                    SimpleNamespace(
+                        id=f"call_{fc.name}",
+                        function=SimpleNamespace(
+                            name=fc.name,
+                            arguments=json.dumps(dict(fc.args)),
+                        ),
+                    )
+                )
 
         message = SimpleNamespace(
             content=text_content,
@@ -308,11 +400,13 @@ class RalphLoop:
         anthropic_tools = []
         for tool in self.agent.tools:
             func = tool["function"]
-            anthropic_tools.append({
-                "name": func["name"],
-                "description": func["description"],
-                "input_schema": func["parameters"],
-            })
+            anthropic_tools.append(
+                {
+                    "name": func["name"],
+                    "description": func["description"],
+                    "input_schema": func["parameters"],
+                }
+            )
 
         kwargs = {
             "model": self.model_config.model,
@@ -338,13 +432,15 @@ class RalphLoop:
             if block.type == "text":
                 text_content = block.text
             elif block.type == "tool_use":
-                tool_calls.append(SimpleNamespace(
-                    id=block.id,
-                    function=SimpleNamespace(
-                        name=block.name,
-                        arguments=json.dumps(block.input),
-                    ),
-                ))
+                tool_calls.append(
+                    SimpleNamespace(
+                        id=block.id,
+                        function=SimpleNamespace(
+                            name=block.name,
+                            arguments=json.dumps(block.input),
+                        ),
+                    )
+                )
 
         message = SimpleNamespace(
             content=text_content,
@@ -378,8 +474,13 @@ class RalphLoop:
     def _is_complete(self, result: str) -> bool:
         """Check if the agent's output signals completion."""
         completion_signals = [
-            "BUILD_SUCCESS", "TESTS_PASSED", "CODE_BUG:",
-            "BUILD_FAILED:", "MAX_ITERATIONS_REACHED",
-            "MAX_TOOL_ROUNDS_REACHED", "PR created", "Pull Request created",
+            "BUILD_SUCCESS",
+            "TESTS_PASSED",
+            "CODE_BUG:",
+            "BUILD_FAILED:",
+            "MAX_ITERATIONS_REACHED",
+            "MAX_TOOL_ROUNDS_REACHED",
+            "PR created",
+            "Pull Request created",
         ]
         return any(signal.lower() in result.lower() for signal in completion_signals)

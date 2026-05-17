@@ -5,10 +5,18 @@ Executes shell commands with safety guardrails (blocked commands, timeouts, trun
 
 import subprocess
 
-
 BLOCKED_COMMANDS = [
-    "rm -rf /", "rm -rf ~", "sudo", "curl", "wget",
-    "ssh", "scp", "format", "mkfs", "dd if=", ":(){",
+    "rm -rf /",
+    "rm -rf ~",
+    "sudo",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "format",
+    "mkfs",
+    "dd if=",
+    ":(){",
 ]
 
 
@@ -21,8 +29,12 @@ def run_command(command: str, cwd: str = ".", timeout: int = 120) -> str:
 
     try:
         result = subprocess.run(
-            command, shell=True, cwd=cwd,
-            capture_output=True, text=True, timeout=timeout,
+            command,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
 
         output_parts = []

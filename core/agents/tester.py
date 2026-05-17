@@ -4,7 +4,7 @@ Writes automated tests and validates the Developer's code.
 """
 
 from core.base_agent import AgentDefinition
-from tools import FILE_TOOLS, FILE_TOOL_MAP, TERMINAL_TOOLS, TERMINAL_TOOL_MAP
+from tools import FILE_TOOL_MAP, FILE_TOOLS, TERMINAL_TOOL_MAP, TERMINAL_TOOLS
 
 TESTER = AgentDefinition(
     name="Tester",

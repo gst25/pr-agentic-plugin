@@ -4,6 +4,7 @@ Reads a file's contents with line numbers for easy reference.
 """
 
 from __future__ import annotations
+
 from pathlib import Path
 
 

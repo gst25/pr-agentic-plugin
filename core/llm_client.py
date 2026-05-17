@@ -18,6 +18,7 @@ import yaml
 @dataclass
 class ModelConfig:
     """Configuration for a single agent's LLM."""
+
     provider: str
     model: str
     temperature: float
@@ -32,7 +33,9 @@ def load_model_configs(config_path: str = "models.yaml") -> dict[str, ModelConfi
     path = Path(config_path)
     if not path.exists():
         # Default: use gpt-4o for everything
-        default = ModelConfig(provider="openai", model="gpt-4o", temperature=0.2, max_tokens=4096)
+        default = ModelConfig(
+            provider="openai", model="gpt-4o", temperature=0.2, max_tokens=4096
+        )
         return {
             "project_manager": default,
             "tech_lead": default,
@@ -62,11 +65,13 @@ def get_llm_client(provider: str):
     """
     if provider == "openai":
         from openai import OpenAI
+
         return OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
     elif provider == "anthropic":
         try:
             from anthropic import Anthropic
+
             return Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
         except ImportError:
             raise ImportError("Install anthropic: pip install anthropic")
@@ -74,18 +79,24 @@ def get_llm_client(provider: str):
     elif provider == "google":
         try:
             import google.generativeai as genai
+
             genai.configure(api_key=os.getenv("GOOGLE_API_KEY", ""))
             return genai
         except ImportError:
-            raise ImportError("Install google-generativeai: pip install google-generativeai")
+            raise ImportError(
+                "Install google-generativeai: pip install google-generativeai"
+            )
 
     elif provider == "ollama":
         # Ollama uses the OpenAI-compatible API
         from openai import OpenAI
+
         return OpenAI(
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
             api_key="ollama",  # Ollama doesn't need a real key
         )
 
     else:
-        raise ValueError(f"Unknown provider: '{provider}'. Supported: openai, anthropic, google, ollama")
+        raise ValueError(
+            f"Unknown provider: '{provider}'. Supported: openai, anthropic, google, ollama"
+        )

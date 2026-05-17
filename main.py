@@ -24,6 +24,7 @@ console = Console()
 def cmd_init(args):
     """Handle the 'init' subcommand."""
     from core.init_command import init_agentic
+
     repo_path = args.repo or os.getcwd()
     init_agentic(repo_path)
 
@@ -36,12 +37,14 @@ def cmd_run(args):
     repo_path = args.repo or os.getcwd()
 
     # Banner
-    console.print(Panel(
-        "[bold cyan]🤖 Agentic Plugin[/bold cyan]\n"
-        "[dim]From PRD to Pull Request — powered by AI agents[/dim]",
-        style="bold",
-        padding=(1, 4),
-    ))
+    console.print(
+        Panel(
+            "[bold cyan]🤖 Agentic Plugin[/bold cyan]\n"
+            "[dim]From PRD to Pull Request — powered by AI agents[/dim]",
+            style="bold",
+            padding=(1, 4),
+        )
+    )
 
     # Resolve config from the target repo
     config = resolve_config(repo_path)
@@ -52,19 +55,29 @@ def cmd_run(args):
         console.print("[bold red]❌ Configuration Errors:[/bold red]")
         for err in errors:
             console.print(f"  • {err}")
-        console.print("\n[dim]Run 'agentic init' first, then fill in .agentic/config.yaml[/dim]")
+        console.print(
+            "\n[dim]Run 'agentic init' first, then fill in .agentic/config.yaml[/dim]"
+        )
         sys.exit(1)
 
     mode = args.mode
 
     # Display resolved config
     dev_model = config.models.get("developer")
-    mode_label = "Full (PRD → Tickets → Code → PR)" if mode == "full" else "Direct (Doc → Code → PR)"
+    mode_label = (
+        "Full (PRD → Tickets → Code → PR)"
+        if mode == "full"
+        else "Direct (Doc → Code → PR)"
+    )
     console.print(f"  📄 Document:      {args.prd}")
     console.print(f"  🔀 Mode:          {mode_label}")
     console.print(f"  📁 Repo:          {repo_path}")
     console.print(f"  🐙 GitHub Repo:   {config.github_repo}")
-    console.print(f"  💻 Developer LLM: {dev_model.provider}/{dev_model.model}" if dev_model else "")
+    console.print(
+        f"  💻 Developer LLM: {dev_model.provider}/{dev_model.model}"
+        if dev_model
+        else ""
+    )
     console.print(f"  🔁 Max Iterations: {config.max_ralph_iterations}")
     console.print()
 
@@ -99,7 +112,8 @@ def main():
         help="Initialize the .agentic/ config directory in a repo",
     )
     init_parser.add_argument(
-        "--repo", default=None,
+        "--repo",
+        default=None,
         help="Path to the repo (default: current directory)",
     )
 
@@ -109,15 +123,19 @@ def main():
         help="Run the full pipeline: PRD → Tickets → Code → Tests → PR",
     )
     run_parser.add_argument(
-        "--prd", required=True,
+        "--prd",
+        required=True,
         help="Path to the PRD/SRD/Dev document (Markdown or PDF)",
     )
     run_parser.add_argument(
-        "--repo", default=None,
+        "--repo",
+        default=None,
         help="Path to the target repo (default: current directory)",
     )
     run_parser.add_argument(
-        "--mode", choices=["full", "direct"], default="full",
+        "--mode",
+        choices=["full", "direct"],
+        default="full",
         help=(
             "Pipeline mode. "
             "'full': PRD → Create Tickets → Code → Tests → PR (default). "

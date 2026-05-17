@@ -4,10 +4,13 @@ Creates a Pull Request on GitHub via the API.
 """
 
 import os
+
 from github import Github, GithubException
 
 
-def create_pull_request(title: str, body: str, head_branch: str, base_branch: str = "main") -> str:
+def create_pull_request(
+    title: str, body: str, head_branch: str, base_branch: str = "main"
+) -> str:
     """Create a Pull Request on the configured GitHub repository."""
     try:
         token = os.environ.get("GITHUB_TOKEN", "")
@@ -17,8 +20,10 @@ def create_pull_request(title: str, body: str, head_branch: str, base_branch: st
         gh = Github(token)
         repo = gh.get_repo(repo_name)
         pr = repo.create_pull(
-            title=title, body=body,
-            head=head_branch, base=base_branch,
+            title=title,
+            body=body,
+            head=head_branch,
+            base=base_branch,
         )
         return f"SUCCESS: Pull Request created! URL: {pr.html_url}"
     except GithubException as e:
@@ -37,8 +42,14 @@ GIT_PR_TOOL = {
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "PR title."},
-                "body": {"type": "string", "description": "PR body/description in Markdown."},
-                "head_branch": {"type": "string", "description": "The feature branch name."},
+                "body": {
+                    "type": "string",
+                    "description": "PR body/description in Markdown.",
+                },
+                "head_branch": {
+                    "type": "string",
+                    "description": "The feature branch name.",
+                },
                 "base_branch": {
                     "type": "string",
                     "description": "The target branch to merge into (default: 'main').",

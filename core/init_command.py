@@ -169,7 +169,9 @@ def init_agentic(repo_path: str):
     agentic_dir = repo / ".agentic"
 
     if agentic_dir.exists():
-        console.print(f"[yellow]⚠️  .agentic/ already exists in {repo}. Skipping init.[/yellow]")
+        console.print(
+            f"[yellow]⚠️  .agentic/ already exists in {repo}. Skipping init.[/yellow]"
+        )
         console.print("[dim]Delete .agentic/ and run init again to regenerate.[/dim]")
         return
 
@@ -181,7 +183,9 @@ def init_agentic(repo_path: str):
 
     # Write config.yaml
     config_path = agentic_dir / "config.yaml"
-    config_path.write_text(CONFIG_YAML_TEMPLATE.format(repo_name=repo_name), encoding="utf-8")
+    config_path.write_text(
+        CONFIG_YAML_TEMPLATE.format(repo_name=repo_name), encoding="utf-8"
+    )
 
     # Write models.yaml
     models_path = agentic_dir / "models.yaml"
@@ -202,26 +206,29 @@ def init_agentic(repo_path: str):
         gitignore_path.write_text(GITIGNORE_ADDITION.strip() + "\n", encoding="utf-8")
 
     # Print success
-    console.print(Panel(
-        "[bold green]✅ Agentic Plugin initialized![/bold green]\n\n"
-        f"Created in: [cyan]{agentic_dir}[/cyan]\n\n"
-        "Files created:\n"
-        f"  📄 .agentic/config.yaml      — API keys & GitHub settings\n"
-        f"  📄 .agentic/models.yaml      — LLM model per agent\n"
-        f"  📄 .agentic/AGENT_CONTEXT.md  — Your repo's coding rules\n\n"
-        "[bold]Next steps:[/bold]\n"
-        "  1. Fill in your API keys in .agentic/config.yaml\n"
-        "  2. Choose your models in .agentic/models.yaml\n"
-        "  3. Describe your repo in .agentic/AGENT_CONTEXT.md\n"
-        "  4. Run: [cyan]agentic run --prd path/to/prd.md[/cyan]",
-        style="green",
-    ))
+    console.print(
+        Panel(
+            "[bold green]✅ Agentic Plugin initialized![/bold green]\n\n"
+            f"Created in: [cyan]{agentic_dir}[/cyan]\n\n"
+            "Files created:\n"
+            f"  📄 .agentic/config.yaml      — API keys & GitHub settings\n"
+            f"  📄 .agentic/models.yaml      — LLM model per agent\n"
+            f"  📄 .agentic/AGENT_CONTEXT.md  — Your repo's coding rules\n\n"
+            "[bold]Next steps:[/bold]\n"
+            "  1. Fill in your API keys in .agentic/config.yaml\n"
+            "  2. Choose your models in .agentic/models.yaml\n"
+            "  3. Describe your repo in .agentic/AGENT_CONTEXT.md\n"
+            "  4. Run: [cyan]agentic run --prd path/to/prd.md[/cyan]",
+            style="green",
+        )
+    )
 
 
 def _detect_repo_name(repo: Path) -> str | None:
     """Try to extract owner/repo from the git remote URL."""
     try:
         import git
+
         r = git.Repo(repo)
         remote_url = r.remotes.origin.url
         # Handle both HTTPS and SSH formats
