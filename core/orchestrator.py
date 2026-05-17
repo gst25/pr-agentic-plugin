@@ -71,27 +71,79 @@ class Orchestrator:
         console.print(Panel("[bold]📋 Phase 1: Project Manager — Breaking PRD into tickets[/bold]", style="magenta"))
 
         pm_model = self.config.models.get("project_manager")
-        os.environ["OPENAI_API_KEY"] = self.config.openai_api_key
-        client = get_llm_client(pm_model.provider if pm_model else "openai")
+        provider = pm_model.provider if pm_model else "openai"
+        model = pm_model.model if pm_model else "gpt-4o"
+
+        # Set the right API key in env
+        if provider == "openai":
+            os.environ["OPENAI_API_KEY"] = self.config.openai_api_key
+        elif provider == "anthropic":
+            os.environ["ANTHROPIC_API_KEY"] = self.config.anthropic_api_key
+        elif provider == "google":
+            os.environ["GOOGLE_API_KEY"] = self.config.google_api_key
 
         prompt = (
             f"## PRD Document\n\n{self.prd_content}\n\n"
             f"## Repository Context\n\n{self.agent_context}\n\n"
-            f"Break this PRD into implementable GitHub Issues."
+            f"Break this PRD into implementable GitHub Issues.\n\n"
+            f"Return ONLY a JSON object with a 'tickets' key containing the array."
         )
 
-        response = client.chat.completions.create(
-            model=pm_model.model if pm_model else "gpt-4o",
-            messages=[
-                {"role": "system", "content": PROJECT_MANAGER.system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=pm_model.temperature if pm_model else 0.3,
-            max_tokens=pm_model.max_tokens if pm_model else 4096,
-            response_format={"type": "json_object"},
-        )
+        full_prompt = PROJECT_MANAGER.system_prompt + "\n\n" + prompt
+        raw_output = ""
 
-        raw_output = response.choices[0].message.content
+        try:
+            if provider == "google":
+                import google.generativeai as genai
+                genai.configure(api_key=self.config.google_api_key)
+                gmodel = genai.GenerativeModel(model)
+                response = gmodel.generate_content(
+                    full_prompt,
+                    generation_config=genai.GenerationConfig(
+                        temperature=pm_model.temperature if pm_model else 0.3,
+                        max_output_tokens=8192,
+                        response_mime_type="application/json",
+                    ),
+                )
+                # Robust text extraction
+                try:
+                    raw_output = response.text
+                except Exception:
+                    raw_output = response.candidates[0].content.parts[0].text
+
+            elif provider == "anthropic":
+                client = get_llm_client("anthropic")
+                response = client.messages.create(
+                    model=model,
+                    system=PROJECT_MANAGER.system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=pm_model.temperature if pm_model else 0.3,
+                    max_tokens=pm_model.max_tokens if pm_model else 4096,
+                )
+                raw_output = response.content[0].text
+
+            else:
+                # OpenAI / Ollama (OpenAI-compatible)
+                client = get_llm_client(provider)
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": PROJECT_MANAGER.system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=pm_model.temperature if pm_model else 0.3,
+                    max_tokens=pm_model.max_tokens if pm_model else 4096,
+                    response_format={"type": "json_object"},
+                )
+                raw_output = response.choices[0].message.content
+
+        except Exception as e:
+            console.print(f"[red]ERROR calling {provider}/{model}: {e}[/red]")
+            return []
+
+        # Parse the JSON output — clean up markdown fences if present
+        console.print(f"[dim]Raw output length: {len(raw_output)} chars[/dim]")
+
         try:
             parsed = json.loads(raw_output)
             if isinstance(parsed, list):
@@ -101,12 +153,53 @@ class Orchestrator:
             else:
                 self.tickets = [parsed]
         except json.JSONDecodeError:
-            console.print(f"[red]ERROR: PM returned invalid JSON.[/red]")
-            console.print(raw_output)
-            return []
+            # Try to repair truncated JSON (common with API token limits)
+            console.print("[yellow]⚠️ JSON was truncated. Attempting repair...[/yellow]")
+            repaired = self._repair_truncated_json(raw_output)
+            if repaired:
+                self.tickets = repaired
+                console.print(f"[green]✅ Repaired! Recovered {len(repaired)} ticket(s).[/green]")
+            else:
+                console.print(f"[red]ERROR: PM returned invalid JSON. Could not repair.[/red]")
+                console.print(raw_output[:500])
+                return []
 
         self._display_tickets()
         return self.tickets
+
+    def _repair_truncated_json(self, raw: str) -> list[dict] | None:
+        """Try to recover valid ticket objects from truncated JSON."""
+        import re
+
+        raw = raw.strip()
+        # Strip markdown fences
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            raw = "\n".join(lines).strip()
+
+        # Find all complete JSON objects using regex
+        # Each ticket is a { ... } block with balanced braces
+        tickets = []
+        depth = 0
+        start = None
+        for i, ch in enumerate(raw):
+            if ch == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start is not None:
+                    try:
+                        obj = json.loads(raw[start:i + 1])
+                        if "title" in obj:
+                            tickets.append(obj)
+                    except json.JSONDecodeError:
+                        pass
+                    start = None
+
+        return tickets if tickets else None
 
     def _display_tickets(self):
         """Pretty-print the generated tickets."""

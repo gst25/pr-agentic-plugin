@@ -3,15 +3,19 @@ Tool: create_pull_request
 Creates a Pull Request on GitHub via the API.
 """
 
+import os
 from github import Github, GithubException
-from config import Config
 
 
 def create_pull_request(title: str, body: str, head_branch: str, base_branch: str = "main") -> str:
     """Create a Pull Request on the configured GitHub repository."""
     try:
-        gh = Github(Config.GITHUB_TOKEN)
-        repo = gh.get_repo(Config.GITHUB_REPO)
+        token = os.environ.get("GITHUB_TOKEN", "")
+        repo_name = os.environ.get("GITHUB_REPO", "")
+        if not token or not repo_name:
+            return "ERROR: GITHUB_TOKEN or GITHUB_REPO not set in environment."
+        gh = Github(token)
+        repo = gh.get_repo(repo_name)
         pr = repo.create_pull(
             title=title, body=body,
             head=head_branch, base=base_branch,

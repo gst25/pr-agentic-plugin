@@ -137,21 +137,163 @@ class RalphLoop:
 
     def _call_llm(self, messages: list[dict]):
         """Call the LLM using the correct provider SDK."""
-        kwargs = {
-            "model": self.model_config.model,
-            "messages": messages,
-            "temperature": self.model_config.temperature,
-            "max_tokens": self.model_config.max_tokens,
-        }
-        if self.agent.tools:
-            kwargs["tools"] = self.agent.tools
-
         if self.model_config.provider in ("openai", "ollama"):
+            kwargs = {
+                "model": self.model_config.model,
+                "messages": messages,
+                "temperature": self.model_config.temperature,
+                "max_tokens": self.model_config.max_tokens,
+            }
+            if self.agent.tools:
+                kwargs["tools"] = self.agent.tools
             return self.client.chat.completions.create(**kwargs)
+
         elif self.model_config.provider == "anthropic":
             return self._call_anthropic(messages)
+
+        elif self.model_config.provider == "google":
+            return self._call_google(messages)
+
         else:
-            return self.client.chat.completions.create(**kwargs)
+            raise ValueError(f"Unsupported provider: {self.model_config.provider}")
+
+    def _call_google(self, messages: list[dict]):
+        """Adapter for Google Gemini API."""
+        import google.generativeai as genai
+        from types import SimpleNamespace
+
+        genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
+
+        # Build Gemini tools from OpenAI tool schemas
+        gemini_tools = None
+        if self.agent.tools:
+            def map_schema(schema):
+                if not isinstance(schema, dict): return schema
+                mapped = {}
+                for k, v in schema.items():
+                    if k == "type" and isinstance(v, str):
+                        t = v.upper()
+                        # Map JSON schema types to Gemini proto types
+                        if t == "INTEGER": t = "INTEGER"
+                        elif t == "NUMBER": t = "NUMBER"
+                        elif t == "BOOLEAN": t = "BOOLEAN"
+                        elif t == "ARRAY": t = "ARRAY"
+                        elif t == "OBJECT": t = "OBJECT"
+                        mapped[k] = getattr(genai.protos.Type, t, genai.protos.Type.TYPE_UNSPECIFIED)
+                    elif k == "properties":
+                        mapped[k] = {pk: map_schema(pv) for pk, pv in v.items()}
+                    elif k == "items":
+                        mapped[k] = map_schema(v)
+                    else:
+                        mapped[k] = v
+                return genai.protos.Schema(**mapped)
+
+            func_declarations = []
+            for tool in self.agent.tools:
+                func = tool["function"]
+                func_declarations.append(
+                    genai.protos.FunctionDeclaration(
+                        name=func["name"],
+                        description=func["description"],
+                        parameters=map_schema(func.get("parameters", {})),
+                    )
+                )
+            gemini_tools = [genai.protos.Tool(function_declarations=func_declarations)]
+
+        # Extract system instruction and build Gemini content
+        system_instruction = ""
+        gemini_contents = []
+        for msg in messages:
+            # Handle both dicts and SimpleNamespace/Object types
+            role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "")
+            
+            if role == "system":
+                system_instruction = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+            elif role == "user":
+                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+                gemini_contents.append({"role": "user", "parts": [content]})
+            elif role == "assistant" or role == "model":
+                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+                
+                parts = []
+                if content:
+                    parts.append(content)
+                
+                # Handle tool calls in assistant messages
+                tool_calls = msg.get("tool_calls") if isinstance(msg, dict) else getattr(msg, "tool_calls", None)
+                if tool_calls:
+                    for tc in tool_calls:
+                        tc_func = tc.get("function") if isinstance(tc, dict) else tc.function
+                        tc_name = tc_func.get("name") if isinstance(tc_func, dict) else tc_func.name
+                        tc_args = tc_func.get("arguments") if isinstance(tc_func, dict) else tc_func.arguments
+                        
+                        parts.append(
+                            genai.protos.FunctionCall(
+                                name=tc_name,
+                                args=json.loads(tc_args) if isinstance(tc_args, str) else tc_args
+                            )
+                        )
+                
+                if not parts:
+                    parts.append("")
+                gemini_contents.append({"role": "model", "parts": parts})
+                
+            elif role == "tool":
+                # Convert tool results back to Gemini format
+                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+                tool_call_id = msg.get("tool_call_id") if isinstance(msg, dict) else getattr(msg, "tool_call_id", "")
+                
+                # In Gemini, we use FunctionResponse for tool responses
+                gemini_contents.append({
+                    "role": "user",
+                    "parts": [
+                        genai.protos.FunctionResponse(
+                            name=tool_call_id.replace("call_", ""), # Simplified name extraction
+                            response={"result": content}
+                        )
+                    ]
+                })
+
+        gmodel = genai.GenerativeModel(
+            self.model_config.model,
+            system_instruction=system_instruction if system_instruction else None,
+            tools=gemini_tools,
+        )
+
+        response = gmodel.generate_content(
+            gemini_contents,
+            generation_config=genai.GenerationConfig(
+                temperature=self.model_config.temperature,
+                max_output_tokens=self.model_config.max_tokens,
+            ),
+        )
+
+        # Adapt Gemini response to OpenAI-like structure
+        text_content = ""
+        tool_calls = []
+
+        for part in response.parts:
+            if part.text:
+                text_content = part.text
+            elif part.function_call:
+                fc = part.function_call
+                tool_calls.append(SimpleNamespace(
+                    id=f"call_{fc.name}",
+                    function=SimpleNamespace(
+                        name=fc.name,
+                        arguments=json.dumps(dict(fc.args)),
+                    ),
+                ))
+
+        message = SimpleNamespace(
+            content=text_content,
+            tool_calls=tool_calls if tool_calls else None,
+        )
+        choice = SimpleNamespace(
+            message=message,
+            finish_reason="tool_calls" if tool_calls else "stop",
+        )
+        return SimpleNamespace(choices=[choice])
 
     def _call_anthropic(self, messages: list[dict]):
         """Adapter for Anthropic's API."""
