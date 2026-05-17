@@ -21,3 +21,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local automated push script
+push-plugin.sh
